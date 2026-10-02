@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Controle de Consignado</title><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#f6f4f0;--card:#fff;--tx:#25221e;--mu:#7a746b;--bd:#e3ded6;--ac:#8a5a2b;--ok:#2e7d4f;--wa:#b26a00;--er:#b3261e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1b1916;--card:#262320;--tx:#efeae2;--mu:#a39b8f;--bd:#3a352f;--ac:#d9a066;--ok:#6cc08b;--wa:#e0a64a;--er:#f08a82}}
+:root[data-theme="dark"]{--bg:#1b1916;--card:#262320;--tx:#efeae2;--mu:#a39b8f;--bd:#3a352f;--ac:#d9a066;--ok:#6cc08b;--wa:#e0a64a;--er:#f08a82}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}
+header{padding:12px 16px;font-weight:700;font-size:17px;border-bottom:1px solid var(--bd);background:var(--card)}
+nav{display:flex;gap:4px;overflow-x:auto;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+nav button{border:0;background:none;color:var(--mu);padding:8px 12px;border-radius:8px;font:inherit;white-space:nowrap;cursor:pointer}
+nav button.on{background:var(--ac);color:#fff}
+main{max-width:1100px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 10px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.k{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}.k small{color:var(--mu);display:block}.k b{font-size:20px}
+label{display:block;font-size:12px;color:var(--mu)}
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+.btn{border:0;background:var(--ac);color:#fff;padding:9px 14px;border-radius:8px;font:inherit;cursor:pointer}.btn.s{background:none;color:var(--ac);border:1px solid var(--ac);padding:4px 9px;font-size:13px}
+.w{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}th{color:var(--mu);font-weight:600;font-size:12px}
+.r{text-align:right}.neg{color:var(--er)}.pos{color:var(--ok)}.bar{height:8px;background:var(--ac);border-radius:4px;margin-top:3px}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px;border:1px solid currentColor}.Aberto{color:var(--wa)}.Fechado{color:var(--ac)}.Pago{color:var(--ok)}
+.msg{color:var(--mu);padding:10px}
+</style></head><body>
+<header style="display:flex;justify-content:space-between;align-items:center">🕯️ Controle de Consignado<button class="btn s" onclick="sair()">Sair</button></header><nav id="nav"></nav><main id="app"><div class="msg">Carregando…</div></main>
+<script>
+const D={lojas:[],produtos:[],mov:[],fech:[]};let tab='dash',ready=0;
+const $=id=>document.getElementById(id),v=id=>$(id)?$(id).value:'';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const brl=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const dt=s=>s?s.split('-').reverse().join('/'):'';
+const hoje=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const L=id=>D.lojas.find(x=>x.id==id)||{},P_=id=>D.produtos.find(x=>x.id==id)||{};
+const r2=n=>Math.round(n*100)/100;
+let P={i:hoje().slice(0,8)+'01',f:hoje(),l:''},E={},M={t:'entrada',d:hoje(),q:'',v:'',o:''},C={d:hoje(),s:'Aberto'},FL={},ML='',OPEN=null;
+const lojaOpts=(sel,all)=>`<option value="">${all?'Todas':'Selecione'}</option>`+D.lojas.filter(l=>all||l.ativa!==false).map(l=>`<option value="${l.id}" ${l.id==sel?'selected':''}>${esc(l.nome)}</option>`).join('');
+const prodOpts=sel=>`<option value="">Selecione</option>`+D.produtos.filter(p=>p.ativo!==false).map(p=>`<option value="${p.id}" ${p.id==sel?'selected':''}>${esc(p.sku)} · ${esc(p.nome)}</option>`).join('');
+const stock=(l,p)=>D.mov.filter(m=>m.loja==l&&m.prod==p).reduce((a,m)=>a+m.qtd,0);
+const vendas=(l,i,f)=>D.mov.filter(m=>m.tipo=='venda'&&(!l||m.loja==l)&&m.data>=i&&m.data<=f);
+const val=m=>Math.abs(m.qtd)*m.preco;
+const tipos={entrada:1,venda:-1,ajuste_pos:1,ajuste_neg:-1,devolucao:-1},tn={entrada:'Entrada',venda:'Venda',ajuste_pos:'Ajuste positivo',ajuste_neg:'Ajuste negativo',devolucao:'Devolução'};
+const add=(c,o)=>db.collection(c).add({...o,ts:Date.now()}),upd=(c,id,o)=>db.doc(c+'/'+id).update(o);
+const T=[['dash','Painel'],['est','Estoque'],['mov','Lançamentos'],['fech','Fechamentos'],['lojas','Lojas'],['prods','Produtos']];
+const go=t=>{tab=t;OPEN=null;render()};
+function table(h,rows,empty){return rows.length?`<div class="w"><table><tr>${h.map(x=>`<th class="${x[0]=='>'?'r':''}">${x.replace(/^>/,'')}</th>`).join('')}</tr>${rows.join('')}</table></div>`:`<div class="msg">${empty||'Nada por aqui ainda.'}</div>`}
+function bars(o){const e=Object.entries(o).sort((a,b)=>b[1]-a[1]),mx=Math.max(1,...e.map(x=>x[1]));return e.length?e.map(([k,x])=>`<div style="margin:6px 0"><div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><b>${brl(x)}</b></div><div class="bar" style="width:${x/mx*100}%"></div></div>`).join(''):'<div class="msg">Sem vendas no período.</div>'}
+const filt=()=>`<div class="g" style="margin-bottom:12px"><div><label>Loja</label><select onchange="P.l=this.value;render()">${lojaOpts(P.l,1)}</select></div><div><label>De</label><input type="date" value="${P.i}" onchange="P.i=this.value;render()"></div><div><label>Até</label><input type="date" value="${P.f}" onchange="P.f=this.value;render()"></div></div>`;
+
+function dash(){
+ const vs=vendas(P.l,P.i,P.f);let tot=0,com=0,bl={},bp={};
+ vs.forEach(m=>{const x=val(m),c=x*(L(m.loja).comissao||0)/100;tot+=x;com+=c;bl[L(m.loja).nome||'?']=(bl[L(m.loja).nome||'?']||0)+x;bp[P_(m.prod).nome||'?']=(bp[P_(m.prod).nome||'?']||0)+x});
+ let es=0,np=0;D.lojas.filter(l=>!P.l||l.id==P.l).forEach(l=>D.produtos.forEach(p=>{const s=stock(l.id,p.id);if(s>0){es+=s;np++}}));
+ const k=(a,b)=>`<div class="k"><small>${a}</small><b>${b}</b></div>`;
+ return filt()+`<div class="g" style="margin-bottom:14px">${k('Total vendido',brl(tot))}${k('Comissões',brl(com))}${k('A receber',brl(tot-com))}${k('Lojas',D.lojas.filter(l=>l.ativa!==false).length)}${k('Produtos em estoque',np)}${k('Estoque total',es+' un.')}</div><div class="g"><div class="card"><h2>Vendas por loja</h2>${bars(bl)}</div><div class="card"><h2>Vendas por produto</h2>${bars(bp)}</div></div>`}
+
+function est(){
+ const rows=[];D.lojas.filter(l=>!P.l||l.id==P.l).forEach(l=>D.produtos.forEach(p=>{
+  const ms=D.mov.filter(m=>m.loja==l.id&&m.prod==p.id);if(!ms.length)return;
+  const rec=ms.filter(m=>m.qtd>0).reduce((a,m)=>a+m.qtd,0),ven=-ms.filter(m=>m.tipo=='venda').reduce((a,m)=>a+m.qtd,0),at=stock(l.id,p.id);
+  const ult=t=>ms.filter(m=>m.tipo==t).map(m=>m.data).sort().pop();
+  rows.push(`<tr><td>${esc(l.nome)}</td><td>${esc(p.nome)}</td><td class="r ${at<0?'neg':''}"><b>${at}</b></td><td class="r">${rec}</td><td class="r">${ven}</td><td>${dt(ult('entrada'))}</td><td>${dt(ult('venda'))}</td><td class="r">${brl(at*p.preco)}</td></tr>`)}));
+ return `<div class="card"><div style="max-width:260px;margin-bottom:10px"><label>Loja</label><select onchange="P.l=this.value;render()">${lojaOpts(P.l,1)}</select></div><h2>Estoque por loja</h2>`+table(['Loja','Produto','>Atual','>Recebido','>Vendido','Últ. abastec.','Últ. venda','>Valor em estoque'],rows,'Nenhuma movimentação ainda. Registre um abastecimento.')+`</div>`}
+
+function mov(){
+ const p=P_(M.p),q=+M.q||0,pv=+M.v||0;
+ const rows=D.mov.filter(m=>!ML||m.loja==ML).sort((a,b)=>b.data.localeCompare(a.data)||b.ts-a.ts).slice(0,200).map(m=>`<tr><td>${dt(m.data)}</td><td>${esc(L(m.loja).nome)}</td><td>${esc(P_(m.prod).nome)}</td><td>${tn[m.tipo]}</td><td class="r ${m.qtd<0?'neg':'pos'}">${m.qtd>0?'+':''}${m.qtd}</td><td class="r">${brl(m.preco)}</td><td class="r">${brl(Math.abs(m.qtd)*m.preco)}</td><td>${esc(m.obs)}</td></tr>`);
+ return `<div class="card"><h2>Registrar movimentação</h2><div class="g">
+ <div><label>Loja</label><select onchange="M.l=this.value;render()">${lojaOpts(M.l)}</select></div>
+ <div><label>Tipo</label><select onchange="M.t=this.value;render()">${Object.keys(tn).map(k=>`<option value="${k}" ${M.t==k?'selected':''}>${tn[k]}</option>`).join('')}</select></div>
+ <div><label>Produto</label><select onchange="M.p=this.value;M.v=P_(this.value).preco||'';render()">${prodOpts(M.p)}</select></div>
+ <div><label>Quantidade</label><input type="number" min="1" value="${M.q}" oninput="M.q=this.value;tot()"></div>
+ <div><label>Preço unitário</label><input type="number" step="0.01" value="${M.v}" oninput="M.v=this.value;tot()"></div>
+ <div><label>Data</label><input type="date" value="${M.d}" onchange="M.d=this.value"></div>
+ <div><label>Observação</label><input value="${esc(M.o)}" oninput="M.o=this.value"></div></div>
+ ${M.l&&M.p?`<p class="msg">Estoque atual desta loja: <b>${stock(M.l,M.p)}</b></p>`:''}
+ <p>Total: <b id="tot">${brl(q*pv)}</b> &nbsp; <button class="btn" onclick="regMov()">Registrar</button></p></div>
+ <div class="card"><div style="max-width:260px;margin-bottom:10px"><label>Filtrar loja</label><select onchange="ML=this.value;render()">${lojaOpts(ML,1)}</select></div><h2>Movimentações</h2>`+table(['Data','Loja','Produto','Tipo','>Qtd','>Unitário','>Total','Obs'],rows)+`</div>`}
+const tot=()=>$('tot').textContent=brl((+M.q||0)*(+M.v||0));
+async function regMov(){
+ const q=parseInt(M.q);if(!M.l||!M.p||!q||q<1||!M.d)return alert('Preencha loja, produto, quantidade e data.');
+ const qtd=q*tipos[M.t];
+ if(qtd<0&&stock(M.l,M.p)+qtd<0&&!confirm(`Estoque ficará negativo (${stock(M.l,M.p)+qtd}). Confirmar mesmo assim?`))return;
+ await add('mov',{loja:M.l,prod:M.p,tipo:M.t,qtd,preco:+M.v||0,data:M.d,obs:M.o});M.q='';M.o='';render()}
+
+function calc(){
+ const vs=vendas(C.l,C.i,C.f),it={};vs.forEach(m=>{const k=m.prod;it[k]=it[k]||{sku:P_(k).sku,nome:P_(k).nome,qtd:0,total:0};it[k].qtd+=-m.qtd;it[k].total+=val(m)});
+ const total=r2(vs.reduce((a,m)=>a+val(m),0)),pct=L(C.l).comissao||0,com=r2(total*pct/100);
+ return {total,pct,com,dev:r2(total-com),itens:Object.values(it)}}
+const detail=f=>`<p class="msg">Itens vendidos:</p>`+table(['SKU','Produto','>Qtd','>Total'],(f.itens||[]).map(i=>`<tr><td>${esc(i.sku)}</td><td>${esc(i.nome)}</td><td class="r">${i.qtd}</td><td class="r">${brl(i.total)}</td></tr>`))+
+ `<p>${['Aberto','Fechado','Pago'].filter(s=>s!=f.status).map(s=>`<button class="btn s" onclick="setSt('${f.id}','${s}')">Marcar como ${s}</button>`).join(' ')}</p>`;
+function fech(){
+ const pv=C.pv?`<div class="g" style="margin:10px 0"><div class="k"><small>Total vendido</small><b>${brl(C.pv.total)}</b></div><div class="k"><small>Comissão (${C.pv.pct}%)</small><b>${brl(C.pv.com)}</b></div><div class="k"><small>Devido ao fabricante</small><b>${brl(C.pv.dev)}</b></div></div>${table(['SKU','Produto','>Qtd','>Total'],C.pv.itens.map(i=>`<tr><td>${esc(i.sku)}</td><td>${esc(i.nome)}</td><td class="r">${i.qtd}</td><td class="r">${brl(i.total)}</td></tr>`),'Sem vendas neste período.')}<p><button class="btn" onclick="saveF()">Salvar fechamento</button></p>`:'';
+ const fs=D.fech.filter(f=>(!FL.l||f.loja==FL.l)&&(!FL.s||f.status==FL.s)&&(!FL.i||f.fim>=FL.i)&&(!FL.f||f.ini<=FL.f)).sort((a,b)=>b.ini.localeCompare(a.ini));
+ const rows=fs.map(f=>`<tr style="cursor:pointer" onclick="OPEN=OPEN=='${f.id}'?null:'${f.id}';render()"><td>${esc(f.lojaNome)}</td><td>${dt(f.ini)} a ${dt(f.fim)}</td><td class="r">${brl(f.total)}</td><td class="r">${brl(f.com)} (${f.pct}%)</td><td class="r"><b>${brl(f.dev)}</b></td><td>${dt(f.data)}</td><td><span class="tag ${f.status}">${f.status}</span></td></tr>`+(OPEN==f.id?`<tr><td colspan="7" style="white-space:normal">${detail(f)}</td></tr>`:''));
+ return `<div class="card"><h2>Novo fechamento</h2><div class="g">
+ <div><label>Loja</label><select onchange="C.l=this.value;C.pv=0">${lojaOpts(C.l)}</select></div>
+ <div><label>Data inicial</label><input type="date" value="${C.i||''}" onchange="C.i=this.value;C.pv=0"></div>
+ <div><label>Data final</label><input type="date" value="${C.f||''}" onchange="C.f=this.value;C.pv=0"></div>
+ <div><label>Data do fechamento</label><input type="date" value="${C.d}" onchange="C.d=this.value"></div>
+ <div><label>Status</label><select onchange="C.s=this.value">${['Aberto','Fechado','Pago'].map(s=>`<option ${C.s==s?'selected':''}>${s}</option>`).join('')}</select></div></div>
+ <p><button class="btn" onclick="prevF()">Calcular</button></p>${pv}</div>
+ <div class="card"><h2>Histórico de fechamentos</h2><div class="g" style="margin-bottom:10px"><div><label>Loja</label><select onchange="FL.l=this.value;render()">${lojaOpts(FL.l,1)}</select></div><div><label>De</label><input type="date" value="${FL.i||''}" onchange="FL.i=this.value;render()"></div><div><label>Até</label><input type="date" value="${FL.f||''}" onchange="FL.f=this.value;render()"></div><div><label>Status</label><select onchange="FL.s=this.value;render()"><option value="">Todos</option>${['Aberto','Fechado','Pago'].map(s=>`<option ${FL.s==s?'selected':''}>${s}</option>`).join('')}</select></div></div>`+table(['Loja','Período','>Vendido','>Comissão','>Devido','Fechamento','Status'],rows,'Nenhum fechamento salvo.')+`<p class="msg">Clique em uma linha para ver os produtos vendidos.</p></div>`}
+function prevF(){if(!C.l||!C.i||!C.f||C.i>C.f)return alert('Informe loja e um período válido.');C.pv=calc();render()}
+async function saveF(){
+ const pv=calc(),ov=D.fech.find(f=>f.loja==C.l&&f.ini<=C.f&&f.fim>=C.i);
+ if(ov&&!confirm(`Já existe fechamento para esta loja que cruza este período (${dt(ov.ini)} a ${dt(ov.fim)}). Salvar mesmo assim?`))return;
+ await add('fech',{loja:C.l,lojaNome:L(C.l).nome,ini:C.i,fim:C.f,data:C.d,status:C.s,total:pv.total,pct:pv.pct,com:pv.com,dev:pv.dev,itens:pv.itens});C.pv=0;render();alert('Fechamento salvo.')}
+async function setSt(id,s){const f=D.fech.find(x=>x.id==id);if((f.status!='Aberto'||s=='Aberto')&&!confirm(`Alterar fechamento de "${f.status}" para "${s}"?`))return;await upd('fech',id,{status:s})}
+
+function lojas(){
+ const e=E.l||{ativa:true,comissao:25};
+ const rows=D.lojas.map(l=>`<tr><td>${esc(l.nome)}</td><td>${esc(l.resp)}</td><td>${esc(l.tel)}</td><td>${esc(l.email)}</td><td class="r">${l.comissao}%</td><td>${l.ativa!==false?'Ativa':'Inativa'}</td><td><button class="btn s" onclick="E.l=D.lojas.find(x=>x.id=='${l.id}');render()">Editar</button></td></tr>`);
+ return `<div class="card"><h2>${e.id?'Editar':'Nova'} loja</h2><div class="g">
+ <div><label>Nome</label><input id="ln" value="${esc(e.nome)}"></div><div><label>Responsável</label><input id="lr" value="${esc(e.resp)}"></div>
+ <div><label>Telefone</label><input id="lt" value="${esc(e.tel)}"></div><div><label>E-mail</label><input id="le" value="${esc(e.email)}"></div>
+ <div><label>Endereço</label><input id="ld" value="${esc(e.end)}"></div><div><label>% de comissão</label><input id="lc" type="number" step="0.1" value="${e.comissao}"></div>
+ <div><label>Status</label><select id="la"><option value="1">Ativa</option><option value="0" ${e.ativa===false?'selected':''}>Inativa</option></select></div></div>
+ <p><button class="btn" onclick="saveL()">Salvar</button> ${e.id?'<button class="btn s" onclick="E.l=null;render()">Cancelar</button>':''}</p></div><div class="card"><h2>Lojas</h2>`+table(['Nome','Responsável','Telefone','E-mail','>Comissão','Status',''],rows)+`</div>`}
+async function saveL(){
+ if(!v('ln').trim())return alert('Informe o nome da loja.');
+ const o={nome:v('ln').trim(),resp:v('lr'),tel:v('lt'),email:v('le'),end:v('ld'),comissao:+v('lc')||0,ativa:v('la')=='1'};
+ E.l&&E.l.id?await upd('lojas',E.l.id,o):await add('lojas',o);E.l=null;render()}
+function prods(){
+ const e=E.p||{preco:'',custo:''};
+ const rows=D.produtos.map(p=>`<tr><td>${esc(p.sku)}</td><td>${esc(p.nome)}</td><td>${esc(p.cat)}</td><td class="r">${brl(p.preco)}</td><td class="r">${brl(p.custo)}</td><td>${p.ativo!==false?'Ativo':'Inativo'}</td><td><button class="btn s" onclick="E.p=D.produtos.find(x=>x.id=='${p.id}');render()">Editar</button></td></tr>`);
+ return `<div class="card"><h2>${e.id?'Editar':'Novo'} produto</h2><div class="g">
+ <div><label>SKU</label><input id="ps" value="${esc(e.sku)}"></div><div><label>Produto</label><input id="pn" value="${esc(e.nome)}"></div>
+ <div><label>Categoria</label><input id="pc" value="${esc(e.cat)}"></div><div><label>Preço de venda</label><input id="pp" type="number" step="0.01" value="${e.preco}"></div>
+ <div><label>Custo</label><input id="pu" type="number" step="0.01" value="${e.custo}"></div>
+ <div><label>Status</label><select id="pa"><option value="1">Ativo</option><option value="0" ${e.ativo===false?'selected':''}>Inativo</option></select></div></div>
+ <p><button class="btn" onclick="saveP()">Salvar</button> ${e.id?'<button class="btn s" onclick="E.p=null;render()">Cancelar</button>':''}</p></div><div class="card"><h2>Produtos</h2>`+table(['SKU','Produto','Categoria','>Preço','>Custo','Status',''],rows)+`</div>`}
+async function saveP(){
+ if(!v('ps').trim()||!v('pn').trim())return alert('Informe SKU e nome.');
+ const o={sku:v('ps').trim(),nome:v('pn').trim(),cat:v('pc'),preco:+v('pp')||0,custo:+v('pu')||0,ativo:v('pa')=='1'};
+ E.p&&E.p.id?await upd('produtos',E.p.id,o):await add('produtos',o);E.p=null;render()}
+
+function render(){
+ if(!ready)return;
+ $('nav').innerHTML=T.filter(t=>!ro||!['lojas','prods'].includes(t[0])).map(t=>`<button class="${t[0]==tab?'on':''}" onclick="go('${t[0]}')">${t[1]}</button>`).join('');
+ const sy=scrollY;$('app').innerHTML={dash,est,mov,fech,lojas,prods}[tab]();if(ro)hideAdm();scrollTo(0,sy)}
+// ===== Supabase: preencha estes dois valores (Project Settings > API) =====
+const SUPA_URL='https://wnixggzxiesznshgwnma.supabase.co',SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InduaXhnZ3p4aWVzem5zaGd3bm1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5MDY0MzIsImV4cCI6MjEwNjQ4MjQzMn0.JmrGVU3sjAcBUs3-mjy_KyOO_2RfNzI2GZ8pldLh5Bw';
+const sb=SUPA_URL.startsWith('COLE')?null:supabase.createClient(SUPA_URL,SUPA_KEY);let papel='parceiro',ro=true;
+async function load(c){
+ const {data,error}=await sb.from(c).select('*');if(error)throw error;
+ const rows=data.map(r=>({id:r.id,...r.data,ts:r.ts}));
+ if(c=='produtos'&&papel=='admin'){const {data:cs}=await sb.from('produtos_custo').select('*'),m={};(cs||[]).forEach(x=>m[x.id]=x.custo);rows.forEach(r=>r.custo=m[r.id]??0)}
+ return rows}
+async function refresh(c){try{D[c]=await load(c);render()}catch(e){$('app').innerHTML='<div class="card msg">Erro no banco: '+esc(e.message)+'</div>'}}
+const split=(c,o)=>{const d={...o};delete d.id;delete d.ts;let custo;if(c=='produtos'&&'custo' in d){custo=d.custo;delete d.custo}return [d,custo]};
+const fail=e=>{alert('Não foi possível salvar: '+e.message);throw e};
+const db={
+ collection:c=>({add:async o=>{const [d,custo]=split(c,o);
+  const {data,error}=await sb.from(c).insert({data:d,loja_id:c=='lojas'||c=='produtos'?undefined:d.loja,ts:o.ts}).select().single();if(error)fail(error);
+  if(custo!==undefined){const r=await sb.from('produtos_custo').insert({id:data.id,custo});if(r.error)fail(r.error)}
+  await refresh(c)}}),
+ doc:p=>({update:async o=>{const [c,id]=p.split('/'),[d,custo]=split(c,o),{id:_i,ts:_t,custo:_c,...old}=D[c].find(x=>x.id==id)||{};
+  const {error}=await sb.from(c).update({data:{...old,...d}}).eq('id',id);if(error)fail(error);
+  if(custo!==undefined){const r=await sb.from('produtos_custo').upsert({id,custo});if(r.error)fail(r.error)}
+  await refresh(c)}})};
+function hideAdm(){if(tab=='mov'||tab=='fech'){const c=$('app').querySelector('.card');c&&c.remove()}$('app').querySelectorAll('button.btn.s').forEach(b=>b.remove())}
+function login(){$('nav').innerHTML='';$('app').innerHTML='<div class="card" style="max-width:340px;margin:30px auto"><h2>Entrar</h2><label>E-mail</label><input id="em" type="email"><label style="margin-top:8px">Senha</label><input id="pw" type="password"><p><button class="btn" onclick="entrar()">Entrar</button></p></div>'}
+async function entrar(){const {error}=await sb.auth.signInWithPassword({email:v('em').trim(),password:v('pw')});if(error)return alert('E-mail ou senha inválidos.');init()}
+async function sair(){await sb.auth.signOut();location.reload()}
+async function init(){
+ if(SUPA_URL.startsWith('COLE')){$('app').innerHTML='<div class="card msg">Preencha SUPA_URL e SUPA_KEY no início do script (veja o LEIA-ME).</div>';return}
+ const {data:{session}}=await sb.auth.getSession();if(!session)return login();
+ const {data:pf}=await sb.from('perfis').select('*').eq('user_id',session.user.id).maybeSingle();
+ if(!pf){$('app').innerHTML='<div class="card msg">Seu usuário ainda não foi liberado. Fale com o administrador.</div>';return}
+ papel=pf.papel;ro=papel!='admin';ready=1;
+ ['lojas','produtos','mov','fech'].forEach(refresh);
+ setInterval(()=>['lojas','produtos','mov','fech'].forEach(refresh),30000)}
+window.addEventListener('load',init);
+</script></body></html>
