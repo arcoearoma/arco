@@ -22,6 +22,8 @@ input,select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-r
 .r{text-align:right}.neg{color:var(--er)}.pos{color:var(--ok)}.bar{height:8px;background:var(--ac);border-radius:4px;margin-top:3px}
 .tag{padding:2px 8px;border-radius:10px;font-size:12px;border:1px solid currentColor}.Aberto{color:var(--wa)}.Fechado{color:var(--ac)}.Pago{color:var(--ok)}
 .msg{color:var(--mu);padding:10px}
+.kk{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}.kk.m{grid-template-columns:1fr 1fr 1.8fr}.kk.r4{grid-template-columns:repeat(4,1fr)}.kk+.card{margin-top:14px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.kk,.kk.m,.kk.r4{grid-template-columns:1fr 1fr}.kk .kw{grid-column:1/-1}.g2{grid-template-columns:1fr}}
 .cal{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;font-size:17px;padding:2px 5px;line-height:1}
 .logo{height:34px;width:auto;filter:var(--lf);vertical-align:middle}.logo.g2{height:90px;display:block;margin:0 auto 14px}
 </style></head><body>
@@ -60,14 +62,17 @@ function chart(vs){
  const e=Object.entries(mm),mx=Math.max(1,...e.map(x=>x[1]));
  return `<div class="card"><h2>Evolução das vendas</h2><div class="w"><div style="display:flex;align-items:flex-end;gap:6px;height:190px;min-width:${e.length*44}px;padding-top:6px">${e.map(([k,x])=>`<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%" title="${k.slice(5)}/${k.slice(0,4)}: ${brl(x)}"><small style="font-size:11px;color:var(--mu)">${x?Math.round(x).toLocaleString('pt-BR'):''}</small><div style="width:100%;max-width:38px;border-radius:5px 5px 0 0;background:var(--ac);height:${x/mx*140}px;min-height:${x?3:1}px;opacity:${x?1:.25}"></div><small style="font-size:11px;margin-top:4px">${k.slice(5)}/${k.slice(2,4)}</small></div>`).join('')}</div></div><p class="msg" style="padding:6px 0 0">Valores em R$, por mês.</p></div>`}
 function dash(){
- const vs=vendas(P.l,P.i,P.f);let tot=0,com=0,bl={},bp={};
- vs.forEach(m=>{const x=val(m),c=x*(L(m.loja).comissao||0)/100;tot+=x;com+=c;bl[L(m.loja).nome||'?']=(bl[L(m.loja).nome||'?']||0)+x;bp[P_(m.prod).nome||'?']=(bp[P_(m.prod).nome||'?']||0)+x});
+ const vs=vendas(P.l,P.i,P.f);let tot=0,com=0,bl={},bp={},bc={};
+ vs.forEach(m=>{const x=val(m),c=x*(L(m.loja).comissao||0)/100;tot+=x;com+=c;bl[L(m.loja).nome||'?']=(bl[L(m.loja).nome||'?']||0)+x;bp[P_(m.prod).nome||'?']=(bp[P_(m.prod).nome||'?']||0)+x;const cn=cat(P_(m.prod));bc[cn]=(bc[cn]||0)+x});
  let es=0,np=0;D.lojas.filter(l=>!P.l||l.id==P.l).forEach(l=>D.produtos.forEach(p=>{const s=stock(l.id,p.id);if(s>0){es+=s;np++}}));
  const k=(a,b)=>`<div class="k"><small>${a}</small><b>${b}</b></div>`;
  const rec=r2(D.fech.filter(f=>(!P.l||f.loja==P.l)&&f.status=='Pago'&&f.fim>=P.i&&f.ini<=P.f).reduce((a,f)=>a+f.dev,0));
- const kp=ro?k('Total vendido',brl(tot))+k('Comissões',brl(com))+k('Produtos em estoque',np)+k('Estoque total',es+' un.')
-  :k('Total vendido',brl(tot))+k('Comissões',brl(com))+k('Recebido / Total a repassar',`${brl(rec)} <span style="font-size:13px;color:var(--mu)">de ${brl(tot-com)}</span>`)+k('Lojas',D.lojas.filter(l=>l.ativa!==false).length)+k('Produtos em estoque',np)+k('Estoque total',es+' un.');
- return filt()+`<div class="g" style="margin-bottom:14px">${kp}</div>`+chart(vs)+`<div class="g">${ro?'':`<div class="card"><h2>Vendas por loja</h2>${bars(bl)}</div>`}<div class="card"><h2>Vendas por produto</h2>${bars(bp)}</div></div>`}
+ const pr=r2(tot-com),pc=pr>0?Math.round(rec/pr*100):0;
+ const kw=`<div class="k kw"><small>Repasse Recebido / Total a Receber</small><b style="white-space:nowrap">${brl(rec)} <span style="color:var(--mu);font-weight:400">/ ${brl(pr)}</span></b><small>${pc}% recebido</small></div>`;
+ const top=ro?`<div class="kk r4">${k('Total vendido',brl(tot))}${k('Comissões',brl(com))}${k('Produtos em estoque',np)}${k('Estoque total',es+' un.')}</div>`
+  :`<div class="kk m">${k('Total vendido',brl(tot))}${k('Comissões',brl(com))}${kw}</div><div class="kk">${k('Lojas',D.lojas.filter(l=>l.ativa!==false).length)}${k('Produtos em estoque',np)}${k('Estoque total',es+' un.')}</div>`;
+ const cc=(t,o)=>`<div class="card"><h2>${t}</h2>${bars(o)}</div>`;
+ return filt()+top+chart(vs)+(ro?`<div class="g2">${cc('Vendas por categoria',bc)}${cc('Vendas por produto',bp)}</div>`:`<div class="g2">${cc('Vendas por categoria',bc)}${cc('Vendas por loja',bl)}</div>${cc('Vendas por produto',bp)}`)}
 
 function estResumo(){
  const ls=D.lojas.filter(l=>!P.l||l.id==P.l).map(l=>l.id),ms=D.mov.filter(m=>ls.includes(m.loja));
