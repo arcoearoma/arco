@@ -34,8 +34,12 @@ const dt=s=>s?s.split('-').reverse().join('/'):'';
 const hoje=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const L=id=>D.lojas.find(x=>x.id==id)||{},P_=id=>D.produtos.find(x=>x.id==id)||{};
 const r2=n=>Math.round(n*100)/100;
-let P={i:hoje().slice(0,8)+'01',f:hoje(),l:''},E={},M={t:'entrada',d:hoje(),q:'',v:'',o:''},C={d:hoje(),s:'Aberto'},FL={},ML='',OPEN=null;
-const lojaOpts=(sel,all)=>`<option value="">${all?'Todas':'Selecione'}</option>`+D.lojas.filter(l=>all||l.ativa!==false).map(l=>`<option value="${l.id}" ${l.id==sel?'selected':''}>${esc(l.nome)}</option>`).join('');
+const isod=t=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec((t||'').trim());if(!m)return '';const d=new Date(+m[3],+m[2]-1,+m[1]);return d.getDate()==+m[1]&&d.getMonth()==+m[2]-1?`${m[3]}-${m[2]}-${m[1]}`:''};
+const mk=e=>{const d=e.value.replace(/\D/g,'').slice(0,8);e.value=d.length>4?d.slice(0,2)+'/'+d.slice(2,4)+'/'+d.slice(4):d.length>2?d.slice(0,2)+'/'+d.slice(2):d};
+const D8=(val,fn)=>`<input inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${dt(val)}" oninput="mk(this)" onchange="const X=isod(this.value);${fn}">`;
+const cat=p=>(p&&p.cat)||'Sem categoria';
+let P={i:hoje().slice(0,4)+'-01-01',f:hoje().slice(0,4)+'-12-31',l:''},E={},M={t:'entrada',d:hoje(),q:'',v:'',o:''},C={d:hoje(),s:'Aberto'},FL={},ML='',OPEN=null;
+const lojaOpts=(sel,all)=>(ro?'':`<option value="">${all?'Todas':'Selecione'}</option>`)+D.lojas.filter(l=>ro||all||l.ativa!==false).map(l=>`<option value="${l.id}" ${l.id==sel?'selected':''}>${esc(l.nome)}</option>`).join('');
 const prodOpts=sel=>`<option value="">Selecione</option>`+D.produtos.filter(p=>p.ativo!==false).map(p=>`<option value="${p.id}" ${p.id==sel?'selected':''}>${esc(p.sku)} · ${esc(p.nome)}</option>`).join('');
 const stock=(l,p)=>D.mov.filter(m=>m.loja==l&&m.prod==p).reduce((a,m)=>a+m.qtd,0);
 const vendas=(l,i,f)=>D.mov.filter(m=>m.tipo=='venda'&&(!l||m.loja==l)&&m.data>=i&&m.data<=f);
@@ -46,22 +50,38 @@ const T=[['dash','Painel'],['est','Estoque'],['mov','Lançamentos'],['fech','Fec
 const go=t=>{tab=t;OPEN=null;render()};
 function table(h,rows,empty){return rows.length?`<div class="w"><table><tr>${h.map(x=>`<th class="${x[0]=='>'?'r':''}">${x.replace(/^>/,'')}</th>`).join('')}</tr>${rows.join('')}</table></div>`:`<div class="msg">${empty||'Nada por aqui ainda.'}</div>`}
 function bars(o){const e=Object.entries(o).sort((a,b)=>b[1]-a[1]),mx=Math.max(1,...e.map(x=>x[1]));return e.length?e.map(([k,x])=>`<div style="margin:6px 0"><div style="display:flex;justify-content:space-between"><span>${esc(k)}</span><b>${brl(x)}</b></div><div class="bar" style="width:${x/mx*100}%"></div></div>`).join(''):'<div class="msg">Sem vendas no período.</div>'}
-const filt=()=>`<div class="g" style="margin-bottom:12px"><div><label>Loja</label><select onchange="P.l=this.value;render()">${lojaOpts(P.l,1)}</select></div><div><label>De</label><input type="date" value="${P.i}" onchange="P.i=this.value;render()"></div><div><label>Até</label><input type="date" value="${P.f}" onchange="P.f=this.value;render()"></div></div>`;
+const filt=()=>`<div class="g" style="margin-bottom:12px"><div><label>Loja</label><select onchange="P.l=this.value;render()">${lojaOpts(P.l,1)}</select></div><div><label>De</label>${D8(P.i,"P.i=X||P.i;render()")}</div><div><label>Até</label>${D8(P.f,"P.f=X||P.f;render()")}</div></div>`;
 
+function chart(vs){
+ if(!P.i||!P.f||P.i>P.f)return '';const mm={};let y=+P.i.slice(0,4),m=+P.i.slice(5,7);const ye=+P.f.slice(0,4),me=+P.f.slice(5,7);
+ while(y<ye||(y==ye&&m<=me)){mm[`${y}-${String(m).padStart(2,'0')}`]=0;if(++m>12){m=1;y++}}
+ vs.forEach(x=>{const k=x.data.slice(0,7);if(k in mm)mm[k]+=val(x)});
+ const e=Object.entries(mm),mx=Math.max(1,...e.map(x=>x[1]));
+ return `<div class="card"><h2>Evolução das vendas</h2><div class="w"><div style="display:flex;align-items:flex-end;gap:6px;height:190px;min-width:${e.length*44}px;padding-top:6px">${e.map(([k,x])=>`<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%" title="${k.slice(5)}/${k.slice(0,4)}: ${brl(x)}"><small style="font-size:11px;color:var(--mu)">${x?Math.round(x).toLocaleString('pt-BR'):''}</small><div style="width:100%;max-width:38px;border-radius:5px 5px 0 0;background:var(--ac);height:${x/mx*140}px;min-height:${x?3:1}px;opacity:${x?1:.25}"></div><small style="font-size:11px;margin-top:4px">${k.slice(5)}/${k.slice(2,4)}</small></div>`).join('')}</div></div><p class="msg" style="padding:6px 0 0">Valores em R$, por mês.</p></div>`}
 function dash(){
  const vs=vendas(P.l,P.i,P.f);let tot=0,com=0,bl={},bp={};
  vs.forEach(m=>{const x=val(m),c=x*(L(m.loja).comissao||0)/100;tot+=x;com+=c;bl[L(m.loja).nome||'?']=(bl[L(m.loja).nome||'?']||0)+x;bp[P_(m.prod).nome||'?']=(bp[P_(m.prod).nome||'?']||0)+x});
  let es=0,np=0;D.lojas.filter(l=>!P.l||l.id==P.l).forEach(l=>D.produtos.forEach(p=>{const s=stock(l.id,p.id);if(s>0){es+=s;np++}}));
  const k=(a,b)=>`<div class="k"><small>${a}</small><b>${b}</b></div>`;
- return filt()+`<div class="g" style="margin-bottom:14px">${k('Total vendido',brl(tot))}${k('Comissões',brl(com))}${k('A receber',brl(tot-com))}${k('Lojas',D.lojas.filter(l=>l.ativa!==false).length)}${k('Produtos em estoque',np)}${k('Estoque total',es+' un.')}</div><div class="g"><div class="card"><h2>Vendas por loja</h2>${bars(bl)}</div><div class="card"><h2>Vendas por produto</h2>${bars(bp)}</div></div>`}
+ const rec=r2(D.fech.filter(f=>(!P.l||f.loja==P.l)&&f.status=='Pago'&&f.fim>=P.i&&f.ini<=P.f).reduce((a,f)=>a+f.dev,0));
+ const kp=ro?k('Total vendido',brl(tot))+k('Comissões',brl(com))+k('Produtos em estoque',np)+k('Estoque total',es+' un.')
+  :k('Total vendido',brl(tot))+k('Comissões',brl(com))+k('Recebido / Total a repassar',`${brl(rec)} <span style="font-size:13px;color:var(--mu)">de ${brl(tot-com)}</span>`)+k('Lojas',D.lojas.filter(l=>l.ativa!==false).length)+k('Produtos em estoque',np)+k('Estoque total',es+' un.');
+ return filt()+`<div class="g" style="margin-bottom:14px">${kp}</div>`+chart(vs)+`<div class="g">${ro?'':`<div class="card"><h2>Vendas por loja</h2>${bars(bl)}</div>`}<div class="card"><h2>Vendas por produto</h2>${bars(bp)}</div></div>`}
 
+function estResumo(){
+ const ls=D.lojas.filter(l=>!P.l||l.id==P.l).map(l=>l.id),ms=D.mov.filter(m=>ls.includes(m.loja));
+ const c={};let at=0,vl=0,uv=0,tv=0;
+ ms.forEach(m=>{const p=P_(m.prod),k=cat(p);c[k]=c[k]||{at:0,ven:0,vl:0};c[k].at+=m.qtd;c[k].vl+=m.qtd*(p.preco||0);at+=m.qtd;vl+=m.qtd*(p.preco||0);if(m.tipo=='venda'){c[k].ven+=-m.qtd;uv+=-m.qtd;tv+=val(m)}});
+ const k=(a,b,x)=>`<div class="k"><small>${a}</small><b>${b}</b>${x?`<small>${x}</small>`:''}</div>`;
+ return `<div class="g" style="margin-bottom:14px">${k('Total vendido (geral)',brl(tv),uv+' un. vendidas')}${k('Estoque atual na loja',at+' un.','valor '+brl(vl))}</div>
+ <div class="card"><h2>Estoque total na loja, por categoria</h2><div class="g">${Object.entries(c).sort().map(([n,x])=>k(esc(n),x.at+' un.','vendido: '+x.ven+' un.')).join('')||'<div class="msg">Sem movimentações.</div>'}</div></div>`}
 function est(){
  const rows=[];D.lojas.filter(l=>!P.l||l.id==P.l).forEach(l=>D.produtos.forEach(p=>{
   const ms=D.mov.filter(m=>m.loja==l.id&&m.prod==p.id);if(!ms.length)return;
   const rec=ms.filter(m=>m.qtd>0).reduce((a,m)=>a+m.qtd,0),ven=-ms.filter(m=>m.tipo=='venda').reduce((a,m)=>a+m.qtd,0),at=stock(l.id,p.id);
   const ult=t=>ms.filter(m=>m.tipo==t).map(m=>m.data).sort().pop();
   rows.push(`<tr><td>${esc(l.nome)}</td><td>${esc(p.nome)}</td><td class="r ${at<0?'neg':''}"><b>${at}</b></td><td class="r">${rec}</td><td class="r">${ven}</td><td>${dt(ult('entrada'))}</td><td>${dt(ult('venda'))}</td><td class="r">${brl(at*p.preco)}</td></tr>`)}));
- return `<div class="card"><div style="max-width:260px;margin-bottom:10px"><label>Loja</label><select onchange="P.l=this.value;render()">${lojaOpts(P.l,1)}</select></div><h2>Estoque por loja</h2>`+table(['Loja','Produto','>Atual','>Recebido','>Vendido','Últ. abastec.','Últ. venda','>Valor em estoque'],rows,'Nenhuma movimentação ainda. Registre um abastecimento.')+`</div>`}
+ return `<div class="card"><div style="max-width:260px"><label>Loja</label><select onchange="P.l=this.value;render()">${lojaOpts(P.l,1)}</select></div></div>`+estResumo()+`<div class="card"><h2>Estoque por produto</h2>`+table(['Loja','Produto','>Atual','>Recebido','>Vendido','Últ. abastec.','Últ. venda','>Valor em estoque'],rows,'Nenhuma movimentação ainda. Registre um abastecimento.')+`</div>`}
 
 function mov(){
  const p=P_(M.p),q=+M.q||0,pv=+M.v||0;
@@ -72,7 +92,7 @@ function mov(){
  <div><label>Produto</label><select onchange="M.p=this.value;M.v=P_(this.value).preco||'';render()">${prodOpts(M.p)}</select></div>
  <div><label>Quantidade</label><input type="number" min="1" value="${M.q}" oninput="M.q=this.value;tot()"></div>
  <div><label>Preço unitário</label><input type="number" step="0.01" value="${M.v}" oninput="M.v=this.value;tot()"></div>
- <div><label>Data</label><input type="date" value="${M.d}" onchange="M.d=this.value"></div>
+ <div><label>Data</label>${D8(M.d,"M.d=X")}</div>
  <div><label>Observação</label><input value="${esc(M.o)}" oninput="M.o=this.value"></div></div>
  ${M.l&&M.p?`<p class="msg">Estoque atual desta loja: <b>${stock(M.l,M.p)}</b></p>`:''}
  <p>Total: <b id="tot">${brl(q*pv)}</b> &nbsp; <button class="btn" onclick="regMov()">Registrar</button></p></div>
@@ -84,32 +104,42 @@ async function regMov(){
  if(qtd<0&&stock(M.l,M.p)+qtd<0&&!confirm(`Estoque ficará negativo (${stock(M.l,M.p)+qtd}). Confirmar mesmo assim?`))return;
  await add('mov',{loja:M.l,prod:M.p,tipo:M.t,qtd,preco:+M.v||0,data:M.d,obs:M.o});M.q='';M.o='';render()}
 
+function extrato(o){
+ const cs={};let qt=0;(o.itens||[]).forEach(i=>{const k=i.cat||cat(D.produtos.find(p=>p.sku==i.sku));cs[k]=cs[k]||{q:0,t:0};cs[k].q+=i.qtd;cs[k].t+=i.total;qt+=i.qtd});
+ const logo=(document.querySelector('header img')||{}).src||'',R=(a,b)=>`<tr><td>${a}</td><td style="text-align:right"><b>${b}</b></td></tr>`;
+ const h=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Extrato - ${esc(o.lojaNome)} - ${dt(o.ini)} a ${dt(o.fim)}</title><style>body{font-family:system-ui,Arial,sans-serif;max-width:680px;margin:30px auto;padding:0 20px;color:#111}img{height:70px}h1{font-size:22px;margin:14px 0 2px}.m{color:#555;font-size:14px}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{padding:9px 6px;border-bottom:1px solid #ddd;text-align:left;font-size:15px}th{font-size:12px;color:#555;text-transform:uppercase}.r{text-align:right}.t td{font-size:17px}.b{background:#111;color:#fff;border:0;padding:10px 16px;border-radius:8px;font-size:15px;cursor:pointer}@media print{.b{display:none}body{margin:0}}</style></head><body>${logo?`<img src="${logo}" alt="ARCO">`:''}<h1>Extrato de consignado</h1><div class="m">Loja: <b>${esc(o.lojaNome)}</b><br>Período: ${dt(o.ini)} a ${dt(o.fim)}${o.status?'<br>Situação: '+o.status:''}<br>Emitido em ${dt(hoje())}</div>
+ <table class="t">${R('Quantidade total de vendas',qt+' un.')}${R('Valor total vendido',brl(o.total))}${R('Comissão da loja ('+o.pct+'%)',brl(o.com))}${R('Total de repasse',brl(o.dev))}</table>
+ <h2 style="font-size:16px">Total vendido por categoria</h2><table><tr><th>Categoria</th><th class="r">Qtd</th><th class="r">Total</th></tr>${Object.entries(cs).sort().map(([k,x])=>`<tr><td>${esc(k)}</td><td class="r">${x.q}</td><td class="r">${brl(x.t)}</td></tr>`).join('')||'<tr><td colspan="3">Sem vendas no período.</td></tr>'}</table>
+ <button class="b" onclick="print()">Salvar como PDF / Imprimir</button></body></html>`;
+ const w=window.open('','_blank');if(!w)return alert('O navegador bloqueou a nova janela. Permita pop-ups para este site e tente de novo.');w.document.write(h);w.document.close();setTimeout(()=>{try{w.print()}catch(e){}},500)}
+const extP=()=>extrato({...C.pv,lojaNome:L(C.l).nome,ini:C.i,fim:C.f});
+const extF=id=>{const f=D.fech.find(x=>x.id==id);extrato(f)};
 function calc(){
- const vs=vendas(C.l,C.i,C.f),it={};vs.forEach(m=>{const k=m.prod;it[k]=it[k]||{sku:P_(k).sku,nome:P_(k).nome,qtd:0,total:0};it[k].qtd+=-m.qtd;it[k].total+=val(m)});
+ const vs=vendas(C.l,C.i,C.f),it={};vs.forEach(m=>{const k=m.prod;it[k]=it[k]||{sku:P_(k).sku,nome:P_(k).nome,cat:cat(P_(k)),qtd:0,total:0};it[k].qtd+=-m.qtd;it[k].total+=val(m)});
  const total=r2(vs.reduce((a,m)=>a+val(m),0)),pct=L(C.l).comissao||0,com=r2(total*pct/100);
  return {total,pct,com,dev:r2(total-com),itens:Object.values(it)}}
 const detail=f=>`<p class="msg">Itens vendidos:</p>`+table(['SKU','Produto','>Qtd','>Total'],(f.itens||[]).map(i=>`<tr><td>${esc(i.sku)}</td><td>${esc(i.nome)}</td><td class="r">${i.qtd}</td><td class="r">${brl(i.total)}</td></tr>`))+
- `<p>${['Aberto','Fechado','Pago'].filter(s=>s!=f.status).map(s=>`<button class="btn s" onclick="setSt('${f.id}','${s}')">Marcar como ${s}</button>`).join(' ')}</p>`;
+ `<p><button class="btn" onclick="extF('${f.id}')">EXTRATO</button> ${['Aberto','Fechado','Pago'].filter(s=>s!=f.status).map(s=>`<button class="btn s" onclick="setSt('${f.id}','${s}')">Marcar como ${s}</button>`).join(' ')}</p>`;
 const cxHtml=()=>{if(C.cx===undefined||C.cx==='')return '<span class="msg">Informe o valor em caixa para comparar.</span>';const d=r2((+C.cx||0)-C.pv.total);return d==0?'<b class="pos">Confere ✔ — caixa igual ao total vendido</b>':`<b class="neg">${d>0?'Sobra':'Falta'} ${brl(Math.abs(d))}</b> <span class="msg">em relação ao total vendido</span>`};
 const cxUp=()=>{const e=$('dif');if(e&&C.pv)e.innerHTML=cxHtml()};
 function simF(){
- const pv=C.pv?`<div class="g" style="margin:10px 0"><div class="k"><small>Total vendido</small><b>${brl(C.pv.total)}</b></div><div class="k"><small>Comissão da loja (${C.pv.pct}%)</small><b>${brl(C.pv.com)}</b></div><div class="k"><small>Devido ao fabricante</small><b>${brl(C.pv.dev)}</b></div></div>${table(['SKU','Produto','>Qtd','>Total'],C.pv.itens.map(i=>`<tr><td>${esc(i.sku)}</td><td>${esc(i.nome)}</td><td class="r">${i.qtd}</td><td class="r">${brl(i.total)}</td></tr>`),'Sem vendas neste período.')}<div style="max-width:260px;margin-top:12px"><label>Valor em caixa (R$)</label><input type="number" step="0.01" value="${C.cx??''}" oninput="C.cx=this.value;cxUp()"></div><p id="dif">${cxHtml()}</p>`:'';
+ const pv=C.pv?`<div class="g" style="margin:10px 0"><div class="k"><small>Total vendido</small><b>${brl(C.pv.total)}</b></div><div class="k"><small>Comissão da loja (${C.pv.pct}%)</small><b>${brl(C.pv.com)}</b></div><div class="k"><small>Devido ao fabricante</small><b>${brl(C.pv.dev)}</b></div></div>${table(['SKU','Produto','>Qtd','>Total'],C.pv.itens.map(i=>`<tr><td>${esc(i.sku)}</td><td>${esc(i.nome)}</td><td class="r">${i.qtd}</td><td class="r">${brl(i.total)}</td></tr>`),'Sem vendas neste período.')}<div style="max-width:260px;margin-top:12px"><label>Valor em caixa (R$)</label><input type="number" step="0.01" value="${C.cx??''}" oninput="C.cx=this.value;cxUp()"></div><p id="dif">${cxHtml()}</p><p><button class="btn" onclick="extP()">EXTRATO</button></p>`:'';
  return `<div class="card"><h2>Simular fechamento <span class="tag Aberto">Simulação</span></h2><p class="msg">Escolha o período e calcule. Compare com o valor que você tem em caixa. Nada é salvo.</p><div class="g">
  <div><label>Loja</label><select onchange="C.l=this.value;C.pv=0">${lojaOpts(C.l)}</select></div>
- <div><label>Data inicial</label><input type="date" value="${C.i||''}" onchange="C.i=this.value;C.pv=0"></div>
- <div><label>Data final</label><input type="date" value="${C.f||''}" onchange="C.f=this.value;C.pv=0"></div></div>
+ <div><label>Data inicial</label>${D8(C.i,"C.i=X;C.pv=0")}</div>
+ <div><label>Data final</label>${D8(C.f,"C.f=X;C.pv=0")}</div></div>
  <p><button class="btn" onclick="prevF()">Calcular</button></p>${pv}</div>`}
 function fech(){
- const pv=C.pv?`<div class="g" style="margin:10px 0"><div class="k"><small>Total vendido</small><b>${brl(C.pv.total)}</b></div><div class="k"><small>Comissão (${C.pv.pct}%)</small><b>${brl(C.pv.com)}</b></div><div class="k"><small>Devido ao fabricante</small><b>${brl(C.pv.dev)}</b></div></div>${table(['SKU','Produto','>Qtd','>Total'],C.pv.itens.map(i=>`<tr><td>${esc(i.sku)}</td><td>${esc(i.nome)}</td><td class="r">${i.qtd}</td><td class="r">${brl(i.total)}</td></tr>`),'Sem vendas neste período.')}<p><button class="btn" onclick="saveF()">Salvar fechamento</button></p>`:'';
+ const pv=C.pv?`<div class="g" style="margin:10px 0"><div class="k"><small>Total vendido</small><b>${brl(C.pv.total)}</b></div><div class="k"><small>Comissão (${C.pv.pct}%)</small><b>${brl(C.pv.com)}</b></div><div class="k"><small>Devido ao fabricante</small><b>${brl(C.pv.dev)}</b></div></div>${table(['SKU','Produto','>Qtd','>Total'],C.pv.itens.map(i=>`<tr><td>${esc(i.sku)}</td><td>${esc(i.nome)}</td><td class="r">${i.qtd}</td><td class="r">${brl(i.total)}</td></tr>`),'Sem vendas neste período.')}<p><button class="btn" onclick="saveF()">Salvar fechamento</button> <button class="btn" onclick="extP()">EXTRATO</button></p>`:'';
  const fs=D.fech.filter(f=>(!FL.l||f.loja==FL.l)&&(!FL.s||f.status==FL.s)&&(!FL.i||f.fim>=FL.i)&&(!FL.f||f.ini<=FL.f)).sort((a,b)=>b.ini.localeCompare(a.ini));
  const rows=fs.map(f=>`<tr style="cursor:pointer" onclick="OPEN=OPEN=='${f.id}'?null:'${f.id}';render()"><td>${esc(f.lojaNome)}</td><td>${dt(f.ini)} a ${dt(f.fim)}</td><td class="r">${brl(f.total)}</td><td class="r">${brl(f.com)} (${f.pct}%)</td><td class="r"><b>${brl(f.dev)}</b></td><td>${dt(f.data)}</td><td><span class="tag ${f.status}">${f.status}</span></td></tr>`+(OPEN==f.id?`<tr><td colspan="7" style="white-space:normal">${detail(f)}</td></tr>`:''));
  return (ro?simF():`<div class="card"><h2>Novo fechamento</h2><div class="g">
  <div><label>Loja</label><select onchange="C.l=this.value;C.pv=0">${lojaOpts(C.l)}</select></div>
- <div><label>Data inicial</label><input type="date" value="${C.i||''}" onchange="C.i=this.value;C.pv=0"></div>
- <div><label>Data final</label><input type="date" value="${C.f||''}" onchange="C.f=this.value;C.pv=0"></div>
- <div><label>Data do fechamento</label><input type="date" value="${C.d}" onchange="C.d=this.value"></div>
+ <div><label>Data inicial</label>${D8(C.i,"C.i=X;C.pv=0")}</div>
+ <div><label>Data final</label>${D8(C.f,"C.f=X;C.pv=0")}</div>
+ <div><label>Data do fechamento</label>${D8(C.d,"C.d=X")}</div>
  <div><label>Status</label><select onchange="C.s=this.value">${['Aberto','Fechado','Pago'].map(s=>`<option ${C.s==s?'selected':''}>${s}</option>`).join('')}</select></div></div>
- <p><button class="btn" onclick="prevF()">Calcular</button></p>${pv}</div>`)+`<div class="card"><h2>Histórico de fechamentos</h2><div class="g" style="margin-bottom:10px"><div><label>Loja</label><select onchange="FL.l=this.value;render()">${lojaOpts(FL.l,1)}</select></div><div><label>De</label><input type="date" value="${FL.i||''}" onchange="FL.i=this.value;render()"></div><div><label>Até</label><input type="date" value="${FL.f||''}" onchange="FL.f=this.value;render()"></div><div><label>Status</label><select onchange="FL.s=this.value;render()"><option value="">Todos</option>${['Aberto','Fechado','Pago'].map(s=>`<option ${FL.s==s?'selected':''}>${s}</option>`).join('')}</select></div></div>`+table(['Loja','Período','>Vendido','>Comissão','>Devido','Fechamento','Status'],rows,'Nenhum fechamento salvo.')+`<p class="msg">Clique em uma linha para ver os produtos vendidos.</p></div>`}
+ <p><button class="btn" onclick="prevF()">Calcular</button></p>${pv}</div>`)+`<div class="card"><h2>Histórico de fechamentos</h2><div class="g" style="margin-bottom:10px"><div><label>Loja</label><select onchange="FL.l=this.value;render()">${lojaOpts(FL.l,1)}</select></div><div><label>De</label>${D8(FL.i,"FL.i=X;render()")}</div><div><label>Até</label>${D8(FL.f,"FL.f=X;render()")}</div><div><label>Status</label><select onchange="FL.s=this.value;render()"><option value="">Todos</option>${['Aberto','Fechado','Pago'].map(s=>`<option ${FL.s==s?'selected':''}>${s}</option>`).join('')}</select></div></div>`+table(['Loja','Período','>Vendido','>Comissão','>Devido','Fechamento','Status'],rows,'Nenhum fechamento salvo.')+`<p class="msg">Clique em uma linha para ver os produtos vendidos.</p></div>`}
 function prevF(){if(!C.l||!C.i||!C.f||C.i>C.f)return alert('Informe loja e um período válido.');C.pv=calc();render()}
 async function saveF(){
  if(ro)return;
@@ -147,7 +177,7 @@ async function saveP(){
 
 function render(){
  if(!ready)return;
- if(ro&&D.lojas.length){M.l=M.l||D.lojas[0].id;C.l=C.l||D.lojas[0].id;C.i=C.i||hoje().slice(0,8)+'01';C.f=C.f||hoje()}
+ if(ro&&D.lojas.length){P.l=D.lojas[0].id;FL.l=D.lojas[0].id;M.l=M.l||D.lojas[0].id;ML=D.lojas[0].id;C.l=C.l||D.lojas[0].id;C.i=C.i||hoje().slice(0,8)+'01';C.f=C.f||hoje()}
  $('nav').innerHTML=T.filter(t=>!ro||!['lojas','prods'].includes(t[0])).map(t=>`<button class="${t[0]==tab?'on':''}" onclick="go('${t[0]}')">${t[1]}</button>`).join('');
  const sy=scrollY;$('app').innerHTML={dash,est,mov,fech,lojas,prods}[tab]();if(ro)hideAdm();scrollTo(0,sy)}
 // ===== Supabase: preencha estes dois valores (Project Settings > API) =====
